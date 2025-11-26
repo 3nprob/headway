@@ -1,0 +1,25 @@
+#!/bin/bash
+
+REPO_ROOT=$(git rev-parse --show-toplevel)
+
+if [ -z "$HEADWAY_K8S_TEMPLATE_ARTIFACT_ROOT" ]; then
+    echo "set HEADWAY_K8S_TEMPLATE_ARTIFACT_ROOT in .env"
+    exit 1
+fi
+
+if [ -z "$DEPLOYMENT_ARTIFACT_ROOT" ]; then
+    echo "set DEPLOYMENT_ARTIFACT_ROOT in .env"
+    exit 1
+fi
+
+# Detect OS and set sed command
+if [[ "$OSTYPE" == "darwin"* ]]; then
+    SED_CMD="sed -i ''"
+else
+    SED_CMD="sed -i"
+fi
+
+# Use bash -c to execute sed with the proper syntax
+find $REPO_ROOT/k8s/configs -type f -exec bash -c "$SED_CMD 's,${HEADWAY_K8S_TEMPLATE_ARTIFACT_ROOT},${DEPLOYMENT_ARTIFACT_ROOT},' \"\$1\"" _ {} \;
+find $REPO_ROOT/builds/*/transit -type f -exec bash -c "$SED_CMD 's,${HEADWAY_K8S_TEMPLATE_ARTIFACT_ROOT},${DEPLOYMENT_ARTIFACT_ROOT},' \"\$1\"" _ {} \;
+bash -c "$SED_CMD 's,${HEADWAY_K8S_TEMPLATE_ARTIFACT_ROOT},${DEPLOYMENT_ARTIFACT_ROOT},' services/pelias/generate_config/src/Area.ts"

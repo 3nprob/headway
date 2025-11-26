@@ -55,9 +55,12 @@ type Bbox struct {
 }
 
 func (b *Bbox) CommaSeparated() string {
+	// west, south, east, north
 	return fmt.Sprintf("%f,%f,%f,%f", b.Left, b.Bottom, b.Right, b.Top)
 }
+
 func (b *Bbox) SpaceSeparated() string {
+	// west, south, east, north
 	return fmt.Sprintf("%f %f %f %f", b.Left, b.Bottom, b.Right, b.Top)
 }
 
@@ -220,7 +223,10 @@ func (h *Headway) TileserverInitContainer(ctx context.Context) *dagger.Container
 
 func (h *Headway) TileserverServeContainer(ctx context.Context) *dagger.Container {
 	container := slimNodeContainer("gettext-base").
-		WithExec([]string{"npm", "install", "-g", "tileserver-gl-light"})
+		WithFile("/app/package.json", h.ServiceDir("tileserver").File("package.json")).
+		WithFile("/app/yarn.lock", h.ServiceDir("tileserver").File("yarn.lock")).
+		WithWorkdir("/app").
+		WithExec([]string{"yarn", "install", "--prod", "--frozen-lockfile"})
 
 	builtAssets := h.TileserverAssets(ctx)
 
@@ -231,7 +237,9 @@ func (h *Headway) TileserverServeContainer(ctx context.Context) *dagger.Containe
 		WithDirectory("/app/styles/basic", h.ServiceDir("tileserver").Directory("styles/basic")).
 		WithDirectory("/templates/", h.ServiceDir("tileserver").Directory("templates")).
 		WithFile("/app/configure_run.sh", h.ServiceDir("tileserver").File("configure_run.sh")).
+		WithEnvVariable("PATH", "/app/node_modules/.bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin").
 		WithEnvVariable("HEADWAY_PUBLIC_URL", "http://127.0.0.1:8080").
+		WithWorkdir("/").
 		WithDefaultArgs([]string{"/app/configure_run.sh"})
 
 	return container
@@ -337,20 +345,20 @@ func (h *Headway) ValhallaServeContainer(ctx context.Context) *dagger.Container 
 		WithDefaultArgs([]string{"/data/valhalla.json"})
 }
 
-// Extracts bounding box for a given area from bboxes.csv
+// Extracts bounding box for a given area from areas.csv
 func (h *Headway) BBox(ctx context.Context) (*Bbox, error) {
-	bboxesFile := h.ServiceDir("gtfs").File("bboxes.csv")
+	areasFile := h.ServicesDir.File("areas.csv")
 
-	// Area name to look up (must exist in bboxes.csv)
+	// Area name to look up (must exist in areas.csv)
 	area := h.Area
 	if area == "" {
 		return nil, fmt.Errorf("Area is required to get bounding box")
 	}
 
 	container := slimContainer().
-		WithMountedFile("/bboxes.csv", bboxesFile).
-		WithExec([]string{"sh", "-c", fmt.Sprintf("test $(grep '%s:' /bboxes.csv | wc -l) -eq 1", area)}).
-		WithExec([]string{"sh", "-c", fmt.Sprintf("grep '%s:' /bboxes.csv | cut -d':' -f2", area)})
+		WithMountedFile("/areas.csv", areasFile).
+		WithExec([]string{"sh", "-c", fmt.Sprintf("test $(grep '^%s,' /areas.csv | wc -l) -eq 1", area)}).
+		WithExec([]string{"sh", "-c", fmt.Sprintf("grep '^%s,' /areas.csv | cut -d',' -f3", area)})
 
 	bboxStr, err := container.Stdout(ctx)
 	if err != nil {
@@ -458,7 +466,6 @@ func (h *Headway) WebBuild(ctx context.Context,
 	// +optional
 	branding string) *dagger.Directory {
 	container := slimNodeContainer().
-		WithExec([]string{"yarn", "global", "add", "@quasar/cli"}).
 		WithMountedDirectory("/www-app", h.ServiceDir("frontend/www-app")).
 		WithWorkdir("/www-app")
 
@@ -467,8 +474,8 @@ func (h *Headway) WebBuild(ctx context.Context,
 	}
 
 	return container.
-		WithExec([]string{"yarn", "install"}).
-		WithExec([]string{"quasar", "build"}).
+		WithExec([]string{"yarn", "install", "--frozen-lockfile"}).
+		WithExec([]string{"yarn", "build"}).
 		Directory("/www-app/dist/spa")
 }
 
@@ -522,7 +529,7 @@ func rustContainer(packages ...string) *dagger.Container {
 }
 
 func slimNodeContainer(packages ...string) *dagger.Container {
-	container := dag.Container().From("node:20-slim")
+	container := dag.Container().From("node:22-slim")
 	if len(packages) == 0 {
 		return container
 	}

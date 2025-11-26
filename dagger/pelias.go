@@ -23,6 +23,7 @@ func (h *Headway) Pelias(ctx context.Context) *Pelias {
 	config := slimNodeContainer().
 		WithDirectory("generate_config", h.ServiceDir("pelias").Directory("generate_config")).
 		WithWorkdir("generate_config").
+		WithFile("areas.csv", h.ServicesDir.File("areas.csv")).
 		WithExec([]string{"yarn", "install"}).
 		WithExec([]string{"yarn", "build"}).
 		WithExec([]string{"sh", "-c", fmt.Sprintf("bin/generate-pelias-config areas.csv '%s' '%s' > pelias.json", h.Area, countriesStr)}).
@@ -86,7 +87,7 @@ func (p *Pelias) Importer(ctx context.Context) *PeliasImporter {
 
 	opts := dagger.ContainerWithMountedCacheOpts{Owner: "elasticsearch", Sharing: "SHARED"}
 
-	// NOTE: docker-compose passes some extra arguments to this container, e.g. IPC and mem size
+	// NOTE: docker compose passes some extra arguments to this container, e.g. IPC and mem size
 	elasticsearchService := dag.Container().
 		From("pelias/elasticsearch:8.12.2-beta").
 		WithEnvVariable("ES_JAVA_OPTS", "-Xmx8g").
